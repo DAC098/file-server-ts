@@ -1,0 +1,16 @@
+---
+version: "3"
+
+services:
+  server:
+    image: "node:10.7.0"
+    volumes:
+      - "./:/app"
+    working_dir: "/app"
+    environment:
+      - "NODE_ENV=development"
+    ports:
+      - "8443:443"
+    command: "node --experimental-modules --loader ./loader.mjs ./dist/main.js"
+
+...

@@ -1,0 +1,19 @@
+{
+    "compilerOptions": {
+        "target": "esnext",
+        "module": "esnext",
+        "moduleResolution": "node",
+        "sourceMap": false,
+        "outDir": "./dist",
+        "traceResolution": true,
+        "rootDir": "./src",
+        "typeRoots": [
+            "./node_modules/@types"
+        ],
+        "types": [
+            "node",
+            "pump",
+            "tar"
+        ]
+    }
+}

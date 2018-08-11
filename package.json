@@ -1,0 +1,22 @@
+{
+  "name": "file-server",
+  "version": "0.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^10.5.4",
+    "@types/pump": "^1.0.1",
+    "@types/tar": "^4.0.0",
+    "typescript": "^2.9.2"
+  },
+  "dependencies": {
+    "path-to-regexp": "^2.2.1",
+    "pump": "^3.0.0",
+    "tar": "^4.4.6"
+  }
+}
