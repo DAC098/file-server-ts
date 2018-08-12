@@ -1,3 +1,8 @@
+# ssl localhost ssl
+openssl/localhost.cert
+openssl/localhost.key
+
+# pre-built
 node_modules/
 .node_modules/
 built/*

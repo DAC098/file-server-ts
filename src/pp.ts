@@ -4,10 +4,12 @@ import pump from 'pump';
 const pp = (...streams: pump.Stream[]): Promise<void> => {
     return new Promise((resolve,reject) => {
         pump(streams,(err: Error) => {
-            if(err)
+            if(err) {
                 reject(err);
-            else
+            } else {
                 resolve();
+            }
+                
         });
     });
 }

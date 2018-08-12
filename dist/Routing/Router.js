@@ -7,19 +7,39 @@ export var route_methods;
     route_methods["put"] = "put";
     route_methods["delete"] = "delete";
 })(route_methods || (route_methods = {}));
+var route_types;
+(function (route_types) {
+    route_types["endpt"] = "endpt";
+    route_types["mdlwr"] = "mdlwr";
+})(route_types || (route_types = {}));
 export default class Router {
     constructor() {
         this.routes = [];
     }
-    addRoute(method, path, options, ...cb) {
+    addMdlwr(method, path, options, ...cb) {
         let keys = [];
         let parse = pathToRegexp(path, keys, options);
+        let methods = Array.isArray(method) ? method : [method];
         this.routes.push({
-            method,
+            method: method ? methods : null,
             path,
             regex: parse,
             keys,
-            cb
+            cb,
+            type: route_types.mdlwr
+        });
+    }
+    addRoute(method, path, options, ...cb) {
+        let keys = [];
+        let parse = pathToRegexp(path, keys, options);
+        let methods = Array.isArray(method) ? method : [method];
+        this.routes.push({
+            method: method ? methods : null,
+            path,
+            regex: parse,
+            keys,
+            cb,
+            type: route_types.endpt
         });
     }
     mapRegexToObject(regex_result, keys) {
@@ -45,27 +65,55 @@ export default class Router {
         let scheme = request.headers[':scheme'] || 'encrypted' in request.socket ? 'https' : 'http';
         let version = request.httpVersion;
         let method = request.method.toLowerCase();
-        console.log(`${request.method} ${request.url} HTTP/${version}${scheme === 'https' ? ' SSL' : ''}`);
         let req_url = new URL(path, `${scheme}://${authority}`);
         request['parsed_url'] = req_url;
         for (let route of this.routes) {
             let regex_result = route.regex.exec(req_url.pathname);
+            this.current_route = route;
             if (regex_result !== null) {
                 request['params'] = this.mapRegexToObject(regex_result, route.keys);
                 let result;
-                if (route.method !== null) {
-                    if (route.method === method) {
+                if (route.method) {
+                    // @ts-ignore
+                    if (route.method.includes(method)) {
                         result = await this.runRoute(route.cb, request, response);
+                        if (route.type === route_types.endpt) {
+                            return {
+                                found: true,
+                                valid_method: true
+                            };
+                        }
+                    }
+                    else {
+                        if (route.type === route_types.endpt) {
+                            return {
+                                found: true,
+                                valid_method: false
+                            };
+                        }
                     }
                 }
                 else {
                     result = await this.runRoute(route.cb, request, response);
+                    if (route.type === route_types.endpt) {
+                        return {
+                            found: true,
+                            valid_method: true
+                        };
+                    }
                 }
                 if (typeof result === 'boolean') {
                     if (result)
-                        return true;
+                        return {
+                            found: true,
+                            valid_method: true
+                        };
                 }
             }
         }
+        return {
+            found: false,
+            valid_method: false
+        };
     }
 }
