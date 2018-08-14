@@ -35,16 +35,11 @@ const handle = async (request, response) => {
         }
         return;
     }
-    if (!router_result.found) {
+    console.log('router result', router_result);
+    if (!router_result) {
         console.log(logRoute(404, method, path, version, scheme, 'not found'));
         response.writeHead(404, { 'content-type': 'text/plain' });
         response.end('not found');
-        return;
-    }
-    if (!router_result.valid_method) {
-        console.log(logRoute(405, method, path, version, scheme, 'method not allowed'));
-        response.writeHead(405, { 'content-type': 'text/plain' });
-        response.end('method not allowed');
         return;
     }
     console.log(logRoute(response.statusCode, method, path, version, scheme));

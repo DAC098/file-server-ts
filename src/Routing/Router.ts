@@ -14,7 +14,7 @@ enum route_types {
     mdlwr = "mdlwr"
 }
 
-interface route_params {
+type route_params = {
     [s: string]: string
 }
 
@@ -112,8 +112,8 @@ export default class Router {
         return;
     }
 
-    async run(request: Http2ServerRequest, response: Http2ServerResponse): Promise<route_run_result>;
-    async run(request: Http2ServerRequest & route_request, response: Http2ServerResponse): Promise<route_run_result> {
+    async run(request: Http2ServerRequest, response: Http2ServerResponse): Promise<boolean>;
+    async run(request: Http2ServerRequest & route_request, response: Http2ServerResponse): Promise<boolean> {
         let path = request.url;
         let authority = request.headers[':authority'] || request.headers['host'];
         let scheme = request.headers[':scheme'] || 'encrypted' in request.socket ? 'https' : 'http';
@@ -132,50 +132,49 @@ export default class Router {
             if(regex_result !== null) {
                 request['params'] = this.mapRegexToObject(regex_result,route.keys);
                 let result;
+                let check_method = false;
+                let ran_method = false;
 
                 if(route.method) {
+                    check_method = true;
                     // @ts-ignore
                     if(route.method.includes(method)) {
+                        ran_method = true;
                         result = await this.runRoute(route.cb,request,response);
-
-                        if(route.type === route_types.endpt) {
-                            return {
-                                found: true,
-                                valid_method: true
-                            }
-                        }
-                    } else {
-                        if(route.type === route_types.endpt) {
-                            return {
-                                found: true,
-                                valid_method: false
-                            }
-                        }
                     }
                 } else {
                     result = await this.runRoute(route.cb,request,response);
-
-                    if(route.type === route_types.endpt) {
-                        return {
-                            found: true,
-                            valid_method: true
-                        }
-                    }
                 }
 
-                if(typeof result === 'boolean') {
-                    if(result)
-                        return {
-                            found: true,
-                            valid_method: true
-                        };
+                switch(route.type) {
+                    case route_types.endpt:
+                        if(typeof result === 'boolean') {
+                            if(check_method) {
+                                if(ran_method && !result)
+                                    return true;
+                            } else {
+                                if(!result)
+                                    return true;
+                            }
+                        } else {
+                            if(check_method) {
+                                if(ran_method)
+                                    return true;
+                            } else {
+                                return true;
+                            }
+                        }
+                        break;
+                    case route_types.mdlwr:
+                        if(typeof result === 'boolean') {
+                            if(result)
+                                return true;
+                        }
+                    break;
                 }
             }
         }
 
-        return {
-            found: false,
-            valid_method: false
-        };
+        return false;
     }
 }

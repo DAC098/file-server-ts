@@ -106,6 +106,33 @@ router.addRoute(route_methods.get, '/fs/:path*', {}, async (request, response) =
         response.end(`not found`);
     }
 });
+router.addRoute(route_methods.post, '/fs/:path*', {}, async (request, response) => {
+    let path = '/' + request.params['path'];
+    let full_path = join(search_path, path);
+    let stats = null;
+    let file_name = request.parsed_url.searchParams.get('file_name');
+    if (request.parsed_url.searchParams.has('upload')) {
+    }
+    try {
+        stats = await stat(full_path);
+    }
+    catch (err) {
+        if (err.code !== 'ENOENT') {
+            response.writeHead(500, { 'content-type': 'text/plain' });
+            response.end(`server error: ${err.stack}`);
+        }
+        else {
+            response.writeHead(404, { 'content-type': 'text/plain' });
+            response.end(`not found`);
+        }
+        return;
+    }
+    if (stats.isDirectory() && !file_name) {
+        response.writeHead(405, { 'content-type': 'text/plain' });
+        response.end('cannot upload to a file to a directory without a file name');
+        return;
+    }
+});
 router.addRoute(null, '/error', {}, async (request, response) => {
     if (request.parsed_url.searchParams.has('during_res')) {
         response.writeHead(200, { 'content-type': 'text/plain' });

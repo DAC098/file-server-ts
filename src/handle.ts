@@ -14,7 +14,7 @@ const handle = async (request: Http2ServerRequest, response: Http2ServerResponse
     let version = request.httpVersion;
     let method = request.method;
 
-    let router_result: route_run_result;
+    let router_result: boolean;
 
     try {
         router_result = await router.run(request,response);
@@ -43,20 +43,13 @@ const handle = async (request: Http2ServerRequest, response: Http2ServerResponse
         return;
     }
 
-    if(!router_result.found) {
+    console.log('router result',router_result);
+
+    if(!router_result) {
         console.log(logRoute(404,method,path,version,scheme,'not found'));
 
         response.writeHead(404,{'content-type':'text/plain'});
         response.end('not found');
-
-        return;
-    }
-
-    if(!router_result.valid_method) {
-        console.log(logRoute(405,method,path,version,scheme,'method not allowed'));
-
-        response.writeHead(405,{'content-type':'text/plain'});
-        response.end('method not allowed');
 
         return;
     }
