@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import { join } from 'path';
 export const stat = (file_path) => {
     return new Promise((resolve, reject) => {
         fs.stat(file_path, (err, stat) => {
@@ -77,4 +78,23 @@ export const readdir = (path) => {
                 resolve(files);
         });
     });
+};
+export const readdirStats = async (path, recursive = 0) => {
+    let dir_list = await readdir(path);
+    let rtn_list = [];
+    for (let item of dir_list) {
+        let full_path = join(path, item);
+        let stats = await stat(full_path);
+        stats['name'] = item;
+        stats['dir'] = path;
+        if (stats.isDirectory && recursive > 0) {
+            stats['children'] = await readdirStats(full_path, recursive--);
+        }
+        else {
+            stats['children'] = [];
+        }
+        // @ts-ignore
+        rtn_list.push(stats);
+    }
+    return rtn_list;
 };

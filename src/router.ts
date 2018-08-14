@@ -1,11 +1,11 @@
 import Router, {route_methods, route_request} from "./Routing/Router";
 import { Http2ServerResponse } from "http2";
 import { join, basename } from "path";
-import { exists, unlink } from "./file_sys";
+import { exists, unlink, readdir, stat, readdirStats, readFile } from "./file_sys";
 import renderDir from "./render/renderDir";
 import renderFile from "./render/renderFile";
 import pp from './pp';
-import { createReadStream } from "fs";
+import { createReadStream, Stats } from "fs";
 import { Stream } from 'stream';
 // @ts-ignore
 import tar from 'tar';
@@ -27,8 +27,23 @@ router.addRoute(
     // console.log('full_path',full_path);
     // console.log(`path: "${path}"`);
 
-    let is_file = await exists(full_path,'file');
-    let is_dir = await exists(full_path,'dir');
+    let stats: Stats = null;
+
+    try {
+        stats = await stat(full_path);
+    } catch(err) {
+        if(err.code !== 'ENOENT') {
+            console.log(err);
+
+            response.writeHead(500,{'content-type':'text/plain'});
+            response.end(`server error: ${err.stack}`);
+
+            return;
+        }
+    }
+
+    let is_file = stats && stats.isFile();
+    let is_dir = stats && stats.isDirectory();
 
     if(is_file || is_dir) {
         if(req_url.searchParams.has('download')) {
@@ -91,12 +106,26 @@ router.addRoute(
             if(made_tar)
                 await unlink(read_file);
         } else {
-            response.writeHead(200,{'content-type': 'text/html'});
+            response.setHeader('content-type', 'text/html');
 
             if(is_dir) {
-                response.write(await renderDir(path,full_path));
+                let dir_list = [];
+
+                try {
+                    dir_list = await readdirStats(full_path);
+                } catch(err) {
+                    console.error(err);
+
+                    response.writeHead(500);
+                    response.end(`<pre>server error: ${err.stack}</pre>`);
+
+                    return;
+                }
+
+                response.write(await renderDir(path,full_path,dir_list));
             } else {
-                response.write(await renderFile(path,full_path));
+                let file_data = await readFile(full_path);
+                response.write(await renderFile(path,full_path,stats,file_data));
             }
 
             response.end();

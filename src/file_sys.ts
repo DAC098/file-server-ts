@@ -1,4 +1,11 @@
 import * as fs from 'fs';
+import { join } from 'path';
+
+export interface stat_extend extends fs.Stats {
+    name: string,
+    dir: string,
+    children: stat_extend[] 
+}
 
 export const stat = (file_path: fs.PathLike): Promise<fs.Stats> => {
     return new Promise((resolve,reject) => {
@@ -85,4 +92,28 @@ export const readdir = (path: fs.PathLike): Promise<string[]> => {
                 resolve(files);
         });
     });
+}
+
+export const readdirStats = async (path: string, recursive: number = 0): Promise<stat_extend[]> => {
+    let dir_list = await readdir(path);
+    let rtn_list: stat_extend[] = [];
+
+    for(let item of dir_list) {
+        let full_path = join(path,item);
+        let stats = await stat(full_path);
+
+        stats['name'] = item;
+        stats['dir'] = path;
+
+        if(stats.isDirectory && recursive > 0) {
+            stats['children'] = await readdirStats(full_path,recursive--);
+        } else {
+            stats['children'] = [];
+        }
+
+        // @ts-ignore
+        rtn_list.push(stats);
+    }
+
+    return rtn_list;
 }

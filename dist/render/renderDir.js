@@ -1,9 +1,8 @@
 import renderContents from "./renderContents";
 import { dirname, basename, join } from "path";
-import { readdir, stat } from "../file_sys";
-const renderDir = async (path, full_path) => {
+import renderDirPath from "./renderDirPath";
+const renderDir = async (path, full_path, files) => {
     let parent_dir = path !== '/' ? dirname(path) : '/';
-    let files = await readdir(full_path);
     let retrieve = [
         {
             name: 'Size',
@@ -12,32 +11,26 @@ const renderDir = async (path, full_path) => {
     ];
     let rows = [];
     for (let file of files) {
-        try {
-            let stats = await stat(join(full_path, file));
-            let data = [
-                `<a href='/fs${join(path, file)}'>${basename(file)}</a>`
-            ];
-            if (stats.isFile()) {
-                data.push('file');
-            }
-            else {
-                data.push('dir');
-            }
-            for (let get of retrieve) {
-                data.push(stats[get.key]);
-            }
-            rows.push(`<tr><td>${data.join('</td><td>')}</td></tr>`);
+        let data = [
+            `<a href='/fs${join(path, file.name)}'>${basename(file.name)}</a>`
+        ];
+        if (file.isFile()) {
+            data.push('file');
         }
-        catch (err) {
-            console.error(err);
+        else {
+            data.push('dir');
         }
+        for (let get of retrieve) {
+            data.push(file[get.key]);
+        }
+        rows.push(`<tr><td>${data.join('</td><td>')}</td></tr>`);
     }
     let header_rows = [];
     for (let header of retrieve) {
         header_rows.push(`<th>${header.name}</th>`);
     }
     let str = `
-    <div>parent: <a href='/fs${parent_dir}'>${parent_dir}</a></div>
+    <div>parent: ${renderDirPath(path)}</div>
     <div>path: ${path}</div>
     <div><a href='/fs${path}?download=1' download>Download</a></div>
     <table>

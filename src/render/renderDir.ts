@@ -1,11 +1,10 @@
 import renderContents from "./renderContents";
 import { dirname, basename, join } from "path";
-import { readdir, exists, stat } from "../file_sys";
-import { Stats } from "fs";
+import { stat_extend } from "../file_sys";
+import renderDirPath from "./renderDirPath";
 
-const renderDir = async (path: string, full_path: string): Promise<string> => {
+const renderDir = async (path: string, full_path: string, files: stat_extend[]): Promise<string> => {
     let parent_dir = path !== '/' ? dirname(path) : '/';
-    let files = await readdir(full_path);
     let retrieve = [
         {
             name: 'Size',
@@ -15,26 +14,21 @@ const renderDir = async (path: string, full_path: string): Promise<string> => {
     let rows = [];
 
     for(let file of files) {
-        try {
-            let stats = await stat(join(full_path,file));
-            let data = [
-                `<a href='/fs${join(path,file)}'>${basename(file)}</a>`
-            ];
+        let data = [
+            `<a href='/fs${join(path,file.name)}'>${basename(file.name)}</a>`
+        ];
 
-            if(stats.isFile()) {
-                data.push('file');
-            } else {
-                data.push('dir');
-            }
-
-            for(let get of retrieve) {
-                data.push(stats[get.key]);
-            }
-
-            rows.push(`<tr><td>${data.join('</td><td>')}</td></tr>`);
-        } catch(err) {
-            console.error(err);
+        if(file.isFile()) {
+            data.push('file');
+        } else {
+            data.push('dir');
         }
+
+        for(let get of retrieve) {
+            data.push(file[get.key]);
+        }
+
+        rows.push(`<tr><td>${data.join('</td><td>')}</td></tr>`);
     }
 
     let header_rows = [];
@@ -44,7 +38,7 @@ const renderDir = async (path: string, full_path: string): Promise<string> => {
     }
 
     let str: string = `
-    <div>parent: <a href='/fs${parent_dir}'>${parent_dir}</a></div>
+    <div>parent: ${renderDirPath(path)}</div>
     <div>path: ${path}</div>
     <div><a href='/fs${path}?download=1' download>Download</a></div>
     <table>
