@@ -1,6 +1,6 @@
 import renderContents from "./renderContents";
 import { dirname, basename, join } from "path";
-import { stat_extend } from "../file_sys";
+import { stat_extend } from "../io/file/file_sys";
 import renderDirPath from "./renderDirPath";
 
 const renderDir = async (path: string, full_path: string, files: stat_extend[]): Promise<string> => {

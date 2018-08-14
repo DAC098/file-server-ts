@@ -1,7 +1,7 @@
 import * as events from 'events';
 import * as http2 from 'http2';
 import * as fs from 'fs';
-import {stat,readFile, unlink, writeFile} from '../file_sys';
+import {stat,readFile, unlink, writeFile} from '../io/file/file_sys';
 import {exec} from '../exec';
 import { AddressInfo } from 'net';
 

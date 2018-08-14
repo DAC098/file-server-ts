@@ -1,7 +1,7 @@
 import Router, {route_methods, route_request} from "./Routing/Router";
 import { Http2ServerResponse } from "http2";
-import { join, basename } from "path";
-import { exists, unlink, readdir, stat, readdirStats, readFile } from "./file_sys";
+import { join, basename, dirname } from "path";
+import { exists, unlink, readdir, stat, readdirStats, readFile } from "./io/file/file_sys";
 import renderDir from "./render/renderDir";
 import renderFile from "./render/renderFile";
 import pp from './pp';
@@ -9,6 +9,7 @@ import { createReadStream, Stats } from "fs";
 import { Stream } from 'stream';
 // @ts-ignore
 import tar from 'tar';
+import uploadFile from "./io/file/uploadFile";
 
 const router = new Router();
 const search_path = '/';
@@ -146,23 +147,132 @@ router.addRoute(
         let full_path = join(search_path,path);
         let stats: Stats = null;
         let file_name = request.parsed_url.searchParams.get('file_name');
-
-        if(request.parsed_url.searchParams.has('upload')) {
-            
-        }
+        let upload_opt = request.parsed_url.searchParams.get('upload');
+        let use_parent = false;
 
         try {
             stats = await stat(full_path);
         } catch(err) {
             if(err.code !== 'ENOENT') {
+                console.error(err);
+
                 response.writeHead(500,{'content-type':'text/plain'});
                 response.end(`server error: ${err.stack}`);
-            } else {
-                response.writeHead(404,{'content-type':'text/plain'});
-                response.end(`not found`);
+
+                return;
             }
 
+            use_parent = true;
+        }
+
+        if(use_parent && upload_opt) {
+            try {
+                stats = await stat(dirname(full_path));
+            } catch(err) {
+                if(err.code !== 'ENOENT') {
+                    console.error(err);
+
+                    response.writeHead(500,{'content-type':'text/plain'});
+                    response.end(`server error: ${err.stack}`);
+                } else {
+                    response.writeHead(404,{'content-type':'text/plain'});
+                    response.end(`not found`);
+                }
+    
+                return;
+            }
+        } else {
+            response.writeHead(404,{'content-type':'text/plain'});
+            response.end(`not found`);
+
             return;
+        }
+
+        if(upload_opt) {
+            switch(upload_opt) {
+                case 'file':
+                    if(stats.isFile()) {
+                        // overwrite existing file
+
+                        try {
+                            await uploadFile(join(full_path,file_name),request,{
+                                unpack: request.parsed_url.searchParams.has('unpack'),
+                                delete_unpack: request.parsed_url.searchParams.has('delete_unpack'),
+                                overwrite: true
+                            });
+                        } catch(err) {
+                            response.writeHead(500,{'content-type':'text/plain'});
+                            response.end(`server error: ${err.stack}`);
+
+                            return;
+                        }
+                    }
+
+                    if(stats.isDirectory()) {
+                        if(use_parent) {
+                            // create file with basename of url
+
+                            try {
+                                await uploadFile(join(full_path,file_name),request,{
+                                    unpack: request.parsed_url.searchParams.has('unpack'),
+                                    delete_unpack: request.parsed_url.searchParams.has('delete_unpack'),
+                                    overwrite: request.parsed_url.searchParams.has('overwrite')
+                                });
+                            } catch(err) {
+                                response.writeHead(500,{'content-type':'text/plain'});
+                                response.end(`server error: ${err.stack}`);
+
+                                return;
+                            }
+                        } else {
+                            if(!file_name) {
+                                response.writeHead(405,{'content-type':'text/plain'});
+                                response.end(`a file_name is required to upload a file`);
+
+                                return;
+                            }
+
+                            try {
+                                await uploadFile(join(full_path,file_name),request,{
+                                    unpack: request.parsed_url.searchParams.has('unpack'),
+                                    delete_unpack: request.parsed_url.searchParams.has('delete_unpack'),
+                                    overwrite: request.parsed_url.searchParams.has('overwrite')
+                                });
+                            } catch(err) {
+                                response.writeHead(500,{'content-type':'text/plain'});
+                                response.end(`server error: ${err.stack}`);
+
+                                return;
+                            }
+
+                            if(request.parsed_url.searchParams.has('unpack')) {
+                                // treat file as tar archive and unpack
+                            } else {
+                                // create file with file_name
+                            }
+                        }
+                    }
+                    break;
+                case 'dir':
+                    if(stats.isFile()) {
+                        // overwrite existing file with directory
+                    }
+
+                    if(stats.isDirectory()) {
+                        if(use_parent) {
+                            // create directory with basename of url 
+                        } else {
+                            if(!file_name) {
+                                response.writeHead(405,{'content-type':'text/plain'});
+                                response.end(`a file_name is required to create a directory`);
+
+                                return;
+                            }
+
+                            // create directory with file_name
+                        }
+                    }
+            }
         }
 
         if(stats.isDirectory() && !file_name) {

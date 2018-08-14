@@ -18,7 +18,7 @@ type route_params = {
     [s: string]: string
 }
 
-export interface route_request extends Http2ServerRequest {
+export interface route_request extends Http2ServerRequest, ReadableStream {
     params: route_params,
     parsed_url: URL
 }
