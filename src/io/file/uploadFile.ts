@@ -57,6 +57,8 @@ const uploadFile = async (path: string, instream: ReadableStream, options: uploa
 
     setOptions(options);
 
+    console.log('upload options:',options)
+
     if(!exists(directory,'dir')) {
         throw new Error('directory does not exist');
     }
@@ -70,12 +72,16 @@ const uploadFile = async (path: string, instream: ReadableStream, options: uploa
     await pp(instream,ostream);
 
     if(options['unpack']) {
-        let options: tar.ExtractOptions & tar.CreateOptions = {
+        let unpack_options: tar.ExtractOptions & tar.CreateOptions = {
             cwd: directory,
             file: path
         };
 
-        await tar.extract(options);
+        console.log('extract options:',unpack_options);
+
+        let result = await tar.extract(unpack_options);
+
+        console.log('result?',result);
     }
 
     if(options['unpack'] && options['delete_unpack']) {

@@ -1,6 +1,6 @@
 import * as events from 'events';
 import * as http2 from 'http2';
-import { stat, readFile, unlink, writeFile } from '../file_sys';
+import { stat, readFile, unlink, writeFile } from '../io/file/file_sys';
 import { exec } from '../exec';
 export default class Server extends events.EventEmitter {
     constructor() {

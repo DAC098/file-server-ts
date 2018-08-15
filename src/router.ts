@@ -1,7 +1,7 @@
 import Router, {route_methods, route_request} from "./Routing/Router";
 import { Http2ServerResponse } from "http2";
 import { join, basename, dirname } from "path";
-import { exists, unlink, readdir, stat, readdirStats, readFile } from "./io/file/file_sys";
+import { exists, unlink, readdir, stat, readdirStats, readFile, mkdir } from "./io/file/file_sys";
 import renderDir from "./render/renderDir";
 import renderFile from "./render/renderFile";
 import pp from './pp';
@@ -15,6 +15,16 @@ const router = new Router();
 const search_path = '/';
 
 export default router;
+
+router.addRoute(
+    null,
+    '/',
+    {},
+    async (request: route_request, response: Http2ServerResponse): Promise<void> => {
+        response.writeHead(302,{'location':'/fs'});
+        response.end();
+    }
+)
 
 router.addRoute(
     route_methods.get,
@@ -149,9 +159,15 @@ router.addRoute(
         let file_name = request.parsed_url.searchParams.get('file_name');
         let upload_opt = request.parsed_url.searchParams.get('upload');
         let use_parent = false;
+        let initial_found = false;
+
+        console.log('file_name:',file_name);
+        console.log('upload_opt:',upload_opt);
 
         try {
             stats = await stat(full_path);
+
+            initial_found = true;
         } catch(err) {
             if(err.code !== 'ENOENT') {
                 console.error(err);
@@ -165,27 +181,32 @@ router.addRoute(
             use_parent = true;
         }
 
-        if(use_parent && upload_opt) {
-            try {
-                stats = await stat(dirname(full_path));
-            } catch(err) {
-                if(err.code !== 'ENOENT') {
-                    console.error(err);
+        if(!initial_found) {
+            if(upload_opt) {
+                console.log("checking if parent location exists");
 
-                    response.writeHead(500,{'content-type':'text/plain'});
-                    response.end(`server error: ${err.stack}`);
-                } else {
-                    response.writeHead(404,{'content-type':'text/plain'});
-                    response.end(`not found`);
+                try {
+                    stats = await stat(dirname(full_path));
+                } catch(err) {
+                    if(err.code !== 'ENOENT') {
+                        console.error(err);
+
+                        response.writeHead(500,{'content-type':'text/plain'});
+                        response.end(`server error: ${err.stack}`);
+                    } else {
+                        response.writeHead(404,{'content-type':'text/plain'});
+                        response.end(`not found`);
+                    }
+        
+                    return;
                 }
-    
+            } else {
+                console.log('did not find location, use_parent:',use_parent,'upload_opt:',upload_opt);
+                response.writeHead(404,{'content-type':'text/plain'});
+                response.end(`not found`);
+
                 return;
             }
-        } else {
-            response.writeHead(404,{'content-type':'text/plain'});
-            response.end(`not found`);
-
-            return;
         }
 
         if(upload_opt) {
@@ -195,10 +216,10 @@ router.addRoute(
                         // overwrite existing file
 
                         try {
-                            await uploadFile(join(full_path,file_name),request,{
+                            await uploadFile(full_path,request,{
                                 unpack: request.parsed_url.searchParams.has('unpack'),
                                 delete_unpack: request.parsed_url.searchParams.has('delete_unpack'),
-                                overwrite: true
+                                overwrite: request.parsed_url.searchParams.has('overwrite')
                             });
                         } catch(err) {
                             response.writeHead(500,{'content-type':'text/plain'});
@@ -213,10 +234,10 @@ router.addRoute(
                             // create file with basename of url
 
                             try {
-                                await uploadFile(join(full_path,file_name),request,{
+                                await uploadFile(full_path,request,{
                                     unpack: request.parsed_url.searchParams.has('unpack'),
                                     delete_unpack: request.parsed_url.searchParams.has('delete_unpack'),
-                                    overwrite: request.parsed_url.searchParams.has('overwrite')
+                                    overwrite: true
                                 });
                             } catch(err) {
                                 response.writeHead(500,{'content-type':'text/plain'});
@@ -244,23 +265,29 @@ router.addRoute(
 
                                 return;
                             }
-
-                            if(request.parsed_url.searchParams.has('unpack')) {
-                                // treat file as tar archive and unpack
-                            } else {
-                                // create file with file_name
-                            }
                         }
                     }
                     break;
                 case 'dir':
                     if(stats.isFile()) {
-                        // overwrite existing file with directory
+                        response.writeHead(405,{'content-type':'text/plain'});
+                        response.end(`will not overwrite a file with a directory`);
+
+                        return;
                     }
 
                     if(stats.isDirectory()) {
                         if(use_parent) {
-                            // create directory with basename of url 
+                            // create directory with basename of url
+
+                            try {
+                                await mkdir(full_path);
+                            } catch(err) {
+                                response.writeHead(500,{'content-type':'text/plain'});
+                                response.end(`failed to create directory: ${err.stack}`);
+
+                                return;
+                            }
                         } else {
                             if(!file_name) {
                                 response.writeHead(405,{'content-type':'text/plain'});
@@ -270,17 +297,35 @@ router.addRoute(
                             }
 
                             // create directory with file_name
+
+                            try {
+                                await mkdir(join(full_path,file_name));
+                            } catch(err) {
+                                response.writeHead(500,{'content-type':'text/plain'});
+                                response.end(`failed to create directory: ${err.stack}`);
+
+                                return;
+                            }
                         }
                     }
-            }
-        }
+                    break;
+                default:
+                    response.writeHead(405,{'content-type':'text/plain'});
+                    response.end(`unknown upload opt, can be 'file','dir'`);
 
-        if(stats.isDirectory() && !file_name) {
-            response.writeHead(405,{'content-type':'text/plain'});
-            response.end('cannot upload to a file to a directory without a file name');
+                    return;
+            }
+
+            response.writeHead(200,{'content-type':'text/plain'});
+            response.end('ok');
 
             return;
         }
+
+        // handle as data about object being referenced in path
+
+        response.writeHead(200,{'content-type':'text/plain'});
+        response.end('ok');
     }
 );
 

@@ -1,15 +1,20 @@
 import Router, { route_methods } from "./Routing/Router";
-import { join, basename } from "path";
-import { exists, unlink, stat, readdirStats, readFile } from "./file_sys";
+import { join, basename, dirname } from "path";
+import { exists, unlink, stat, readdirStats, readFile, mkdir } from "./io/file/file_sys";
 import renderDir from "./render/renderDir";
 import renderFile from "./render/renderFile";
 import pp from './pp';
 import { createReadStream } from "fs";
 // @ts-ignore
 import tar from 'tar';
+import uploadFile from "./io/file/uploadFile";
 const router = new Router();
 const search_path = '/';
 export default router;
+router.addRoute(null, '/', {}, async (request, response) => {
+    response.writeHead(302, { 'location': '/fs' });
+    response.end();
+});
 router.addRoute(route_methods.get, '/fs/:path*', {}, async (request, response) => {
     let path = '/' + request.params['path'];
     let full_path = join(search_path, path);
@@ -111,27 +116,153 @@ router.addRoute(route_methods.post, '/fs/:path*', {}, async (request, response) 
     let full_path = join(search_path, path);
     let stats = null;
     let file_name = request.parsed_url.searchParams.get('file_name');
-    if (request.parsed_url.searchParams.has('upload')) {
-    }
+    let upload_opt = request.parsed_url.searchParams.get('upload');
+    let use_parent = false;
+    let initial_found = false;
+    console.log('file_name:', file_name);
+    console.log('upload_opt:', upload_opt);
     try {
         stats = await stat(full_path);
+        initial_found = true;
     }
     catch (err) {
         if (err.code !== 'ENOENT') {
+            console.error(err);
             response.writeHead(500, { 'content-type': 'text/plain' });
             response.end(`server error: ${err.stack}`);
+            return;
+        }
+        use_parent = true;
+    }
+    if (!initial_found) {
+        if (upload_opt) {
+            console.log("checking if parent location exists");
+            try {
+                stats = await stat(dirname(full_path));
+            }
+            catch (err) {
+                if (err.code !== 'ENOENT') {
+                    console.error(err);
+                    response.writeHead(500, { 'content-type': 'text/plain' });
+                    response.end(`server error: ${err.stack}`);
+                }
+                else {
+                    response.writeHead(404, { 'content-type': 'text/plain' });
+                    response.end(`not found`);
+                }
+                return;
+            }
         }
         else {
+            console.log('did not find location, use_parent:', use_parent, 'upload_opt:', upload_opt);
             response.writeHead(404, { 'content-type': 'text/plain' });
             response.end(`not found`);
+            return;
         }
+    }
+    if (upload_opt) {
+        switch (upload_opt) {
+            case 'file':
+                if (stats.isFile()) {
+                    // overwrite existing file
+                    try {
+                        await uploadFile(full_path, request, {
+                            unpack: request.parsed_url.searchParams.has('unpack'),
+                            delete_unpack: request.parsed_url.searchParams.has('delete_unpack'),
+                            overwrite: request.parsed_url.searchParams.has('overwrite')
+                        });
+                    }
+                    catch (err) {
+                        response.writeHead(500, { 'content-type': 'text/plain' });
+                        response.end(`server error: ${err.stack}`);
+                        return;
+                    }
+                }
+                if (stats.isDirectory()) {
+                    if (use_parent) {
+                        // create file with basename of url
+                        try {
+                            await uploadFile(full_path, request, {
+                                unpack: request.parsed_url.searchParams.has('unpack'),
+                                delete_unpack: request.parsed_url.searchParams.has('delete_unpack'),
+                                overwrite: true
+                            });
+                        }
+                        catch (err) {
+                            response.writeHead(500, { 'content-type': 'text/plain' });
+                            response.end(`server error: ${err.stack}`);
+                            return;
+                        }
+                    }
+                    else {
+                        if (!file_name) {
+                            response.writeHead(405, { 'content-type': 'text/plain' });
+                            response.end(`a file_name is required to upload a file`);
+                            return;
+                        }
+                        try {
+                            await uploadFile(join(full_path, file_name), request, {
+                                unpack: request.parsed_url.searchParams.has('unpack'),
+                                delete_unpack: request.parsed_url.searchParams.has('delete_unpack'),
+                                overwrite: request.parsed_url.searchParams.has('overwrite')
+                            });
+                        }
+                        catch (err) {
+                            response.writeHead(500, { 'content-type': 'text/plain' });
+                            response.end(`server error: ${err.stack}`);
+                            return;
+                        }
+                    }
+                }
+                break;
+            case 'dir':
+                if (stats.isFile()) {
+                    response.writeHead(405, { 'content-type': 'text/plain' });
+                    response.end(`will not overwrite a file with a directory`);
+                    return;
+                }
+                if (stats.isDirectory()) {
+                    if (use_parent) {
+                        // create directory with basename of url
+                        try {
+                            await mkdir(full_path);
+                        }
+                        catch (err) {
+                            response.writeHead(500, { 'content-type': 'text/plain' });
+                            response.end(`failed to create directory: ${err.stack}`);
+                            return;
+                        }
+                    }
+                    else {
+                        if (!file_name) {
+                            response.writeHead(405, { 'content-type': 'text/plain' });
+                            response.end(`a file_name is required to create a directory`);
+                            return;
+                        }
+                        // create directory with file_name
+                        try {
+                            await mkdir(join(full_path, file_name));
+                        }
+                        catch (err) {
+                            response.writeHead(500, { 'content-type': 'text/plain' });
+                            response.end(`failed to create directory: ${err.stack}`);
+                            return;
+                        }
+                    }
+                }
+                break;
+            default:
+                response.writeHead(405, { 'content-type': 'text/plain' });
+                response.end(`unknown upload opt, can be 'file','dir'`);
+                return;
+        }
+        response.writeHead(200, { 'content-type': 'text/plain' });
+        response.end('ok');
         return;
     }
-    if (stats.isDirectory() && !file_name) {
-        response.writeHead(405, { 'content-type': 'text/plain' });
-        response.end('cannot upload to a file to a directory without a file name');
-        return;
-    }
+    // handle as data about object being referenced in path
+    response.writeHead(200, { 'content-type': 'text/plain' });
+    response.end('ok');
 });
 router.addRoute(null, '/error', {}, async (request, response) => {
     if (request.parsed_url.searchParams.has('during_res')) {
