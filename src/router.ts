@@ -14,17 +14,58 @@ import uploadFile from "./io/file/uploadFile";
 const router = new Router();
 const search_path = '/';
 
+const wait = (time: number): Promise<void> => {
+    return new Promise((resolve) => {
+        let t = setTimeout(() => {
+            resolve();
+            clearTimeout(t);
+        },time);
+    });
+}
+
 export default router;
 
 router.addRoute(
+    route_methods.get,
+    '/asset/:path*',
+    {},
+    async (request: route_request, response: Http2ServerResponse): Promise<void> => {
+        if(await exists('/' + request.params['path'])) {
+            let read_stream = createReadStream('/' + request.params['path']);
+
+            await pp(read_stream,response);
+
+            read_stream.close();
+            response.end();
+        } else {
+            response.writeHead(404,{'content-type':'text/plain'});
+            response.end('not found');
+        }
+    }
+);
+
+router.addMdlwr(
+    null,
+    '/',
+    {end: false},
+    async (request: route_request, response: Http2ServerResponse): Promise<boolean|void> => {
+        console.log('running session info to see if user is logged in');
+    }
+)
+
+router.addMdlwr(
     null,
     '/',
     {},
-    async (request: route_request, response: Http2ServerResponse): Promise<void> => {
-        response.writeHead(302,{'location':'/fs'});
-        response.end();
+    async (request: route_request, response: Http2ServerResponse): Promise<void|boolean> => {
+        if('accept' in request.headers && request.headers['accept'].includes('text/html')) {
+            response.writeHead(302,{'location':'/fs'});
+            response.end();
+
+            return true;
+        }
     }
-)
+);
 
 router.addRoute(
     route_methods.get,
@@ -39,6 +80,8 @@ router.addRoute(
         // console.log(`path: "${path}"`);
 
         let stats: Stats = null;
+
+        // await wait(Math.random() * 1000 + 100);
 
         try {
             stats = await stat(full_path);

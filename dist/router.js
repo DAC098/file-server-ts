@@ -10,10 +10,36 @@ import tar from 'tar';
 import uploadFile from "./io/file/uploadFile";
 const router = new Router();
 const search_path = '/';
+const wait = (time) => {
+    return new Promise((resolve) => {
+        let t = setTimeout(() => {
+            resolve();
+            clearTimeout(t);
+        }, time);
+    });
+};
 export default router;
-router.addRoute(null, '/', {}, async (request, response) => {
-    response.writeHead(302, { 'location': '/fs' });
-    response.end();
+router.addRoute(route_methods.get, '/asset/:path*', {}, async (request, response) => {
+    if (await exists('/' + request.params['path'])) {
+        let read_stream = createReadStream('/' + request.params['path']);
+        await pp(read_stream, response);
+        read_stream.close();
+        response.end();
+    }
+    else {
+        response.writeHead(404, { 'content-type': 'text/plain' });
+        response.end('not found');
+    }
+});
+router.addMdlwr(null, '/', { end: false }, async (request, response) => {
+    console.log('running session info to see if user is logged in');
+});
+router.addMdlwr(null, '/', {}, async (request, response) => {
+    if ('accept' in request.headers && request.headers['accept'].includes('text/html')) {
+        response.writeHead(302, { 'location': '/fs' });
+        response.end();
+        return true;
+    }
 });
 router.addRoute(route_methods.get, '/fs/:path*', {}, async (request, response) => {
     let path = '/' + request.params['path'];
@@ -22,6 +48,7 @@ router.addRoute(route_methods.get, '/fs/:path*', {}, async (request, response) =
     // console.log('full_path',full_path);
     // console.log(`path: "${path}"`);
     let stats = null;
+    // await wait(Math.random() * 1000 + 100);
     try {
         stats = await stat(full_path);
     }

@@ -1,10 +1,16 @@
 import {constants} from 'http2';
 import { Http2ServerRequest, Http2ServerResponse } from "http2";
 import router from './router';
+import { performance } from 'perf_hooks';
 import { route_run_result } from "./Routing/Router";
 
-const logRoute = (code: number,method: string, url: string,version: string,scheme: string,text?: string): string => {
-    return `${typeof text === 'string' && text.length !== 0 ? text + ': ' : ''}${method} ${code} ${url} HTTP/${version}${scheme === 'https' ? ' SSL' : ''}`;
+interface log_data {
+    text?: string,
+    time?: number
+}
+
+const logRoute = (code: number,method: string, url: string,version: string,scheme: string,data: log_data = {}): string => {
+    return `${typeof data['text'] === 'string' && data['text'].length !== 0 ? data['text'] + ': ' : ''}${method} ${code} ${url} HTTP/${version}${scheme === 'https' ? ' SSL' : ''}${typeof data['time'] === 'number' ? ' ' + data['time'].toPrecision(3) + ' ms' : ''}`;
 }
 
 const handle = async (request: Http2ServerRequest, response: Http2ServerResponse): Promise<void> => {
@@ -13,6 +19,8 @@ const handle = async (request: Http2ServerRequest, response: Http2ServerResponse
     let scheme = request.headers[':scheme'] || 'encrypted' in request.socket ? 'https' : 'http';
     let version = request.httpVersion;
     let method = request.method;
+
+    let start_time = performance.now();
 
     let router_result: boolean;
 
@@ -23,7 +31,9 @@ const handle = async (request: Http2ServerRequest, response: Http2ServerResponse
         console.error('route durring error',router.current_route);
 
         if(response.headersSent) {
-            console.error(logRoute(response.statusCode,method,path,version,scheme,'error when responding'));
+            console.error(logRoute(response.statusCode,method,path,version,scheme,{
+                text: 'error when responding'
+            }));
 
             if('stream' in response) {
                 if(!response.stream.destroyed) {
@@ -34,7 +44,9 @@ const handle = async (request: Http2ServerRequest, response: Http2ServerResponse
                 response.destroy();
             }
         } else {
-            console.error(logRoute(500,method,path,version,scheme,'server error'));
+            console.error(logRoute(500,method,path,version,scheme,{
+                text:'server error'
+            }));
 
             response.writeHead(500,{'content-type':'text/plain'});
             response.end();
@@ -43,10 +55,12 @@ const handle = async (request: Http2ServerRequest, response: Http2ServerResponse
         return;
     }
 
-    console.log('router result',router_result);
+    let end_time = performance.now() - start_time;
 
     if(!router_result) {
-        console.log(logRoute(404,method,path,version,scheme,'not found'));
+        console.log(logRoute(404,method,path,version,scheme,{
+            text:'not found'
+        }));
 
         response.writeHead(404,{'content-type':'text/plain'});
         response.end('not found');
@@ -54,7 +68,7 @@ const handle = async (request: Http2ServerRequest, response: Http2ServerResponse
         return;
     }
 
-    console.log(logRoute(response.statusCode,method,path,version,scheme));
+    console.log(logRoute(response.statusCode,method,path,version,scheme,{time:end_time}));
 }
 
 export default handle;
