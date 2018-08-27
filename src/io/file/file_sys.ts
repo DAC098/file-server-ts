@@ -117,3 +117,30 @@ export const readdirStats = async (path: string, recursive: number = 0): Promise
 
     return rtn_list;
 }
+
+export const rmdir = (path: string): Promise<void> => {
+    return new Promise((resolve,reject) => {
+        fs.rmdir(path,err => {
+            if(err)
+                reject(err);
+            else
+                resolve();
+        })
+    });
+}
+
+export const rmdirRec = async (path: string): Promise<void> => {
+    let contents = await readdirStats(path);
+
+    if(contents.length !== 0) {
+        for(let stat of contents) {
+            if(stat.isDirectory()) {
+                await rmdirRec(join(path + stat.name));
+            } else {
+                await unlink(join(path,stat.name));
+            }
+        }
+    }
+
+    await rmdir(path);
+}

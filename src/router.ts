@@ -1,7 +1,7 @@
 import Router, {route_methods, route_request} from "./Routing/Router";
 import { Http2ServerResponse } from "http2";
 import { join, basename, dirname } from "path";
-import { exists, unlink, readdir, stat, readdirStats, readFile, mkdir } from "./io/file/file_sys";
+import { exists, unlink, stat, readdirStats, readFile, mkdir, rmdirRec } from "./io/file/file_sys";
 import renderDir from "./render/renderDir";
 import renderFile from "./render/renderFile";
 import pp from './pp';
@@ -371,6 +371,40 @@ router.addRoute(
         response.end('ok');
     }
 );
+
+router.addRoute(
+    route_methods.delete,
+    '/fs/:path*',
+    {},
+    async (request: route_request, response: Http2ServerResponse): Promise<void> => {
+        let path = '/' + request.params['path'];
+        let full_path = join(search_path,path);
+        let stats: Stats = null;
+
+        try {
+            stats = await stat(full_path);
+        } catch(err) {
+            if(err.code === 'ENOENT') {
+                response.writeHead(404,{'content-type':'text/plain'});
+                response.end('not found');
+            } else {
+                response.writeHead(500,{'content-type':'text/plain'});
+                response.end('server error');
+            }
+
+            return;
+        }
+
+        if(stats.isFile()) {
+            await unlink(full_path);
+        } else if(stats.isDirectory()) {
+            await rmdirRec(full_path);
+        }
+
+        response.writeHead(200,{'content-type':'text/plain'});
+        response.end('ok');
+    }
+)
 
 router.addRoute(
     null,
