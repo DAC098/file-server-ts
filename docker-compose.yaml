@@ -3,7 +3,7 @@ version: "3"
 
 services:
   server:
-    image: "node:10.7.0"
+    image: "node:10.10.0"
     volumes:
       - "./:/app"
     working_dir: "/app"

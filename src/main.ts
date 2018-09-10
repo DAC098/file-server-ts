@@ -1,5 +1,4 @@
 import Server, {server_options} from "./Server/Server";
-import handle from "./handle";
 
 async function main(): Promise<void> {
     let options: server_options = {
@@ -16,9 +15,13 @@ async function main(): Promise<void> {
 
     await server.createServerOptions(options);
 
-    server.setHandle(handle);
-
     await server.start();
+
+    try {
+        await server.loadExtensions();
+    } catch(err) {
+        console.error("error loading extensions:",err.stack);
+    }
 
     console.log(server.address());
 }

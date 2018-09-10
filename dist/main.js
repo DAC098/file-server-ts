@@ -1,5 +1,4 @@
 import Server from "./Server/Server";
-import handle from "./handle";
 async function main() {
     let options = {
         host: '0.0.0.0',
@@ -13,8 +12,13 @@ async function main() {
     };
     let server = new Server();
     await server.createServerOptions(options);
-    server.setHandle(handle);
     await server.start();
+    try {
+        await server.loadExtensions();
+    }
+    catch (err) {
+        console.error("error loading extensions:", err.stack);
+    }
     console.log(server.address());
 }
 main().catch(err => {

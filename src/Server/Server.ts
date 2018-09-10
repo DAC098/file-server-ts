@@ -1,9 +1,19 @@
 import * as events from 'events';
 import * as http2 from 'http2';
 import * as fs from 'fs';
-import {stat,readFile, unlink, writeFile} from '../io/file/file_sys';
+import { performance } from 'perf_hooks';
+import { stat, readFile, unlink, writeFile, readdirStats } from '../io/file/file_sys';
 import {exec} from '../exec';
 import { AddressInfo } from 'net';
+import Extension from './Extension';
+import Router from '../Routing/Router';
+import { dirname, join, basename } from 'path';
+import * as openssl from "../security/openssl";
+
+interface log_data {
+    text?: string,
+    time?: number
+}
 
 export interface server_options {
     host: string,
@@ -35,6 +45,11 @@ export default class Server extends events.EventEmitter {
     private handle: handleCallback;
     private handle_created: boolean;
 
+    public extensions_directory: string;
+    private loaded_extensions: Extension[];
+
+    private router_instance: Router;
+
     constructor() {
         super();
 
@@ -42,34 +57,145 @@ export default class Server extends events.EventEmitter {
         this.created_setup = false;
         this.server_listening = false;
         this.handle_created = false;
+
+        this.router_instance = new Router();
+        this.loaded_extensions = [];
+
+        let local_path = new URL(import.meta["url"]);
+        this.extensions_directory = join(dirname(local_path.pathname),"../extensions");
+    }
+
+    get router() {
+        return this.router_instance;
+    }
+
+    logRoute(code: number,method: string, url: string,version: string,scheme: string,data: log_data = {}): string {
+        return `${typeof data['text'] === 'string' && data['text'].length !== 0 ? data['text'] + ': ' : ''}${method} ${code} ${url} HTTP/${version}${scheme === 'https' ? ' SSL' : ''}${typeof data['time'] === 'number' ? ' ' + data['time'].toPrecision(3) + ' ms' : ''}`;
     }
 
     async handleRequest(
         request: http2.Http2ServerRequest,
         response: http2.Http2ServerResponse
     ): Promise<void> {
-        if(this.handle_created) {
-            try {
-                await this.handle(request,response);
-            } catch(err) {
-                console.log(err);
+        let path = request.url;
+        let authority = request.headers[':authority'] || request.headers['host'];
+        let scheme = request.headers[':scheme'] || 'encrypted' in request.socket ? 'https' : 'http';
+        let version = request.httpVersion;
+        let method = request.method;
 
-                if(response.headersSent) {
-                    response.end();
+        let start_time = performance.now();
+
+        let router_result: boolean;
+
+        try {
+            router_result = await this.router.run(request,response);
+        } catch(err) {
+            console.error(err);
+            console.error('route durring error',this.router.current_route);
+
+            if(response.headersSent) {
+                console.error(this.logRoute(response.statusCode,method,path,version,scheme,{
+                    text: 'error when responding'
+                }));
+
+                if('stream' in response) {
+                    if(!response.stream.destroyed) {
+                        response.stream.close(http2.constants.NGHTTP2_INTERNAL_ERROR);
+                    }
                 } else {
-                    response.writeHead(500,{'content-type': 'text/plain'});
-                    response.end('server error');
+                    // @ts-ignore
+                    response.destroy();
                 }
+            } else {
+                console.error(this.logRoute(500,method,path,version,scheme,{
+                    text:'server error'
+                }));
+
+                response.writeHead(500,{'content-type':'text/plain'});
+                response.end();
             }
-        } else {
-            response.writeHead(200,{'content-type': 'text/plain'});
-            response.end('ok');
+
+            return;
         }
+
+        let end_time = performance.now() - start_time;
+
+        if(!router_result) {
+            console.log(this.logRoute(404,method,path,version,scheme,{
+                text:'not found'
+            }));
+
+            response.writeHead(404,{'content-type':'text/plain'});
+            response.end('not found');
+
+            return;
+        }
+
+        console.log(this.logRoute(response.statusCode,method,path,version,scheme,{time:end_time}));
     }
 
     setHandle(cb: handleCallback): void {
         this.handle_created = true;
         this.handle = cb;
+    }
+
+    async loadExtensionDirectory(path: string): Promise<void> {
+        let directory_contents = await readdirStats(this.extensions_directory);
+        let load_order = [];
+        let load_order_check = [];
+
+        // search for load_order file
+        for (let item_stats of directory_contents) {
+            if(basename(item_stats.name,".js") === "load_order") {
+                let order = await import(join(this.extensions_directory,item_stats.name));
+
+                load_order_check = order.default;
+            }
+        }
+
+        // if a load order was specified then push the stats for the item found to the load_order list
+        if (load_order_check.length !== 0) {
+            for (let item of load_order_check) {
+                let found = directory_contents.find(item_stats => {
+                    return item === basename(item_stats.name, ".js");
+                });
+
+                if (found) {
+                    load_order.push(found);
+                }
+            }
+        } else {
+            // else set what ever was to the load_order
+            load_order = directory_contents;
+        }
+
+        for (let item_stats of load_order) {
+            if (item_stats.isDirectory()) {
+                await this.loadExtensionDirectory(join(path,item_stats.name));
+            } else {
+                let mod = await import(join(path,item_stats.name));
+
+                try {
+                    let instance: Extension = new mod.default();
+
+                    if(instance instanceof Extension) {
+                        console.log('loading extension:', instance.getName());
+                        
+                        await instance.load(this);
+
+                        this.loaded_extensions.push(instance);
+                    } else {
+                        console.warn("the given class did not provide a valid instance. the class must be and instance or extension of the Extension class");
+                    }
+                } catch(err) {
+                    console.error("error loading extension:",err.stack);
+                }
+            }
+        }
+    }
+
+    async loadExtensions(): Promise<void> {
+        await this.loadExtensionDirectory(this.extensions_directory);
     }
 
     async createServerOptions(options: server_options): Promise<void> {
@@ -130,9 +256,9 @@ export default class Server extends events.EventEmitter {
 
                 try {
                     if(!found_key) {
-                        let rsa_result = await exec(`openssl genrsa -out ${key_path} 4096`);
+                        let rsa_result = await openssl.genrsa(key_path,4096);
                     }
-
+                    
                     opts.key = await readFile(key_path);
                 } catch(err) {
                     throw err;
@@ -155,10 +281,20 @@ export default class Server extends events.EventEmitter {
 
                 try {
                     if(!found_cert) {
-                        let cert_result = await exec(`openssl req -new -x509 -key ${key_path} -out ${cert_path} -days 365 -config ${config_path}`);
-                        let cert_text_result = await exec(`openssl req -new -x509 -key ${key_path} -noout -days 365 -config ${config_path} -text`);
+                        let cert_life_time = 365;
 
-                        await writeFile(cert_details_path,cert_text_result.stdout);
+                        let cert_result = await openssl.req(cert_path,{
+                            key: key_path,
+                            days: cert_life_time,
+                            config: config_path
+                        });
+                        let cert_text_result = await openssl.req(cert_details_path,{
+                            key: key_path,
+                            days: cert_life_time,
+                            config: config_path,
+                            text: true,
+                            noout: true
+                        });
                     }
 
                     opts.cert = await readFile(cert_path);
