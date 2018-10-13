@@ -1,9 +1,26 @@
-const renderContents = async (path: string ,contents: string): Promise<string> => {
+export interface resource_item {
+    type: string,
+    link: string
+};
+
+const renderContents = async (path: string ,contents: string, resources: resource_item[] = []): Promise<string> => {
+    let res_list = "";
+
+    for(let item of resources) {
+        if(item.type === "script") {
+            res_list += `<script type="application/javascript" src="${item.link}"></script>\n`;
+        } else if(item.type === 'stylesheet') {
+            res_list += `<link rel="stylesheet" type="text/css" href="${item.link}">\n`
+        }
+    }
+
     return `
     <!DOCTYPE html>
-    <html lang='en'>
+    <html lang="en">
         <head>
             <title>file server, path: ${path}</title>
+            <script type="application/javascript" src="/assets/main.js"></script>
+            ${res_list}
         </head>
         <body>
             ${contents}

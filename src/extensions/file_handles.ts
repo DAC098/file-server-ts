@@ -9,7 +9,6 @@ import renderDir from "../render/renderDir";
 import renderFile from "../render/renderFile";
 import pp from '../pp';
 import { createReadStream, Stats } from "fs";
-import { Stream } from 'stream';
 // @ts-ignore
 import tar from 'tar';
 import uploadFile from "../io/file/uploadFile";
@@ -41,12 +40,13 @@ export default class file_handles extends Extension {
             '/fs/:path*',
             {},
             async (request: route_request, response: Http2ServerResponse): Promise<void> => {
-                let path = '/' + request.params['path'];
+                let req_path_given = request.params["path"];
+                let path = '/' + (req_path_given || '');
                 let full_path = join(this.search_path,path);
                 let req_url = request.parsed_url;
         
-                // console.log('full_path',full_path);
-                // console.log(`path: "${path}"`);
+                console.log('full_path',full_path);
+                console.log(`path: "${path}"`);
         
                 let stats: Stats = null;
         
@@ -68,7 +68,6 @@ export default class file_handles extends Extension {
         
                 if(is_file || is_dir) {
                     if(req_url.searchParams.has('download')) {
-                        let read_stream: Stream;
                         let base = basename(full_path);
                         let filename: string = base.length === 0 ? 'root' : base;
                         let read_file: string = '';
@@ -105,12 +104,13 @@ export default class file_handles extends Extension {
                         }
         
                         try {
-                            read_stream = createReadStream(read_file);
+                            let read_stream = createReadStream(read_file);
         
                             response.writeHead(200,{
                                 'content-disposition': `inline; filename="${filename}"`
                             });
         
+                            // @ts-ignore
                             await pp(read_stream,response);
                         } catch(err) {
                             // @ts-ignore
@@ -371,7 +371,7 @@ export default class file_handles extends Extension {
                 response.writeHead(200,{'content-type':'text/plain'});
                 response.end('ok');
             }
-        )
+        );
         
         server.router.addRoute(
             null,

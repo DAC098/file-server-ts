@@ -2,8 +2,6 @@ import { RegExpOptions } from "path-to-regexp";
 import { Http2ServerRequest, Http2ServerResponse } from "http2";
 import Route from "./Route";
 
-
-
 export enum route_methods {
     get = "get",
     post = "post",
@@ -26,7 +24,7 @@ export interface route_request extends Http2ServerRequest, ReadableStream {
 }
 
 export interface route_cb {
-    (request: route_request,response: Http2ServerResponse): Promise<void | boolean>
+    (request: route_request, response: Http2ServerResponse): Promise<void | boolean>
 }
 
 export interface route_run_result {
@@ -86,19 +84,6 @@ export default class Router {
         this.routes.push(new_route);
     }
 
-    async runRoute(route_cbs: route_cb[],request: route_request, response: Http2ServerResponse): Promise<void | boolean> {
-        for(let cb of route_cbs) {
-            let result = await cb(request,response);
-
-            if(typeof result === "boolean") {
-                if(result)
-                    return true;
-            }
-        }
-
-        return;
-    }
-
     async run(request: Http2ServerRequest, response: Http2ServerResponse): Promise<boolean>;
     async run(request: Http2ServerRequest & route_request, response: Http2ServerResponse): Promise<boolean> {
         let path = request.url;
@@ -106,6 +91,7 @@ export default class Router {
         let scheme = request.headers[":scheme"] || "encrypted" in request.socket ? "https" : "http";
         let version = request.httpVersion;
         let method = <route_methods>request.method.toLowerCase();
+        let protocol = "";
 
         let req_url = new URL(path,`${scheme}://${authority}`);
 

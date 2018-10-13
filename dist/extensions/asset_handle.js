@@ -3,13 +3,15 @@ import { createReadStream } from "fs";
 import { exists } from "../io/file/file_sys";
 import pp from '../pp';
 import { route_methods } from "../Routing/Router";
+import { join } from "path";
 export default class asset_handle extends Extension {
     getName() {
         return "asset_handle";
     }
     async handle_asset_request(request, response) {
-        if (await exists('/' + request.params['path'])) {
-            let read_stream = createReadStream('/' + request.params['path']);
+        let check_path = join(process.cwd(), '/assets/' + request.params['path']);
+        if (await exists(check_path)) {
+            let read_stream = createReadStream(check_path);
             await pp(read_stream, response);
             read_stream.close();
             response.end();
@@ -20,6 +22,6 @@ export default class asset_handle extends Extension {
         }
     }
     async load(server) {
-        server.router.addRoute(route_methods.get, '/asset/:path*', {}, (...args) => this.handle_asset_request(...args));
+        server.router.addRoute(route_methods.get, '/assets/:path*', {}, (...args) => this.handle_asset_request(...args));
     }
 }

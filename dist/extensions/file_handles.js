@@ -26,11 +26,12 @@ export default class file_handles extends Extension {
             }
         });
         server.router.addRoute(route_methods.get, '/fs/:path*', {}, async (request, response) => {
-            let path = '/' + request.params['path'];
+            let req_path_given = request.params["path"];
+            let path = '/' + (req_path_given || '');
             let full_path = join(this.search_path, path);
             let req_url = request.parsed_url;
-            // console.log('full_path',full_path);
-            // console.log(`path: "${path}"`);
+            console.log('full_path', full_path);
+            console.log(`path: "${path}"`);
             let stats = null;
             try {
                 stats = await stat(full_path);
@@ -47,7 +48,6 @@ export default class file_handles extends Extension {
             let is_dir = stats && stats.isDirectory();
             if (is_file || is_dir) {
                 if (req_url.searchParams.has('download')) {
-                    let read_stream;
                     let base = basename(full_path);
                     let filename = base.length === 0 ? 'root' : base;
                     let read_file = '';
@@ -77,10 +77,11 @@ export default class file_handles extends Extension {
                         read_file = full_path;
                     }
                     try {
-                        read_stream = createReadStream(read_file);
+                        let read_stream = createReadStream(read_file);
                         response.writeHead(200, {
                             'content-disposition': `inline; filename="${filename}"`
                         });
+                        // @ts-ignore
                         await pp(read_stream, response);
                     }
                     catch (err) {

@@ -7,6 +7,7 @@ import { Http2ServerResponse } from "http2";
 import { exists } from "../io/file/file_sys";
 import pp from '../pp';
 import {route_methods, route_request} from "../Routing/Router";
+import { join } from "path";
 
 export default class asset_handle extends Extension {
     getName(): string {
@@ -14,8 +15,10 @@ export default class asset_handle extends Extension {
     }
 
     async handle_asset_request(request: route_request, response: Http2ServerResponse): Promise<void> {
-        if(await exists('/' + request.params['path'])) {
-            let read_stream = createReadStream('/' + request.params['path']);
+        let check_path = join(process.cwd(),'/assets/' + request.params['path']);
+        
+        if(await exists(check_path)) {
+            let read_stream = createReadStream(check_path);
 
             await pp(read_stream,response);
 
@@ -30,7 +33,7 @@ export default class asset_handle extends Extension {
     async load(server: Server): Promise<void> {
         server.router.addRoute(
             route_methods.get,
-            '/asset/:path*',
+            '/assets/:path*',
             {},
            (...args) => this.handle_asset_request(...args)
         );

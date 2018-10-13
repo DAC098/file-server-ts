@@ -26,22 +26,13 @@ export default class Router {
         let new_route = new Route(this.current_extension, route_types.endpt, method, path, options, cb);
         this.routes.push(new_route);
     }
-    async runRoute(route_cbs, request, response) {
-        for (let cb of route_cbs) {
-            let result = await cb(request, response);
-            if (typeof result === "boolean") {
-                if (result)
-                    return true;
-            }
-        }
-        return;
-    }
     async run(request, response) {
         let path = request.url;
         let authority = request.headers[":authority"] || request.headers["host"];
         let scheme = request.headers[":scheme"] || "encrypted" in request.socket ? "https" : "http";
         let version = request.httpVersion;
         let method = request.method.toLowerCase();
+        let protocol = "";
         let req_url = new URL(path, `${scheme}://${authority}`);
         request["parsed_url"] = req_url;
         for (let route of this.routes) {
