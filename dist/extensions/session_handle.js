@@ -7,6 +7,6 @@ export default class session_handle extends Extension {
         console.log('running session info to see if user is logged in');
     }
     async load(server) {
-        server.router.addMdlwr(null, '/', { end: false }, (...args) => this.handle_session_request(...args));
+        server.router.addMdlwr(null, '/', { end: false }, (request, response) => this.handle_session_request(request, response));
     }
 }

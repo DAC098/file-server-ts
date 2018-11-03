@@ -44,6 +44,7 @@ const uploadFile = async (path, instream, options = {}) => {
         throw new Error('file already exists');
     }
     let ostream = createWriteStream(path);
+    // @ts-ignore
     await pp(instream, ostream);
     if (options['unpack']) {
         let unpack_options = {

@@ -22,6 +22,6 @@ export default class asset_handle extends Extension {
         }
     }
     async load(server) {
-        server.router.addRoute(route_methods.get, '/assets/:path*', {}, (...args) => this.handle_asset_request(...args));
+        server.router.addRoute(route_methods.get, '/assets/:path*', {}, (req, res) => this.handle_asset_request(req, res));
     }
 }

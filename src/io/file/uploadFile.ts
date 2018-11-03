@@ -69,10 +69,11 @@ const uploadFile = async (path: string, instream: ReadableStream, options: uploa
 
     let ostream = createWriteStream(path);
 
+    // @ts-ignore
     await pp(instream,ostream);
 
     if(options['unpack']) {
-        let unpack_options: tar.ExtractOptions & tar.CreateOptions = {
+        let unpack_options: tar.ExtractOptions & tar.CreateOptions & tar.FileOptions = {
             cwd: directory,
             file: path
         };

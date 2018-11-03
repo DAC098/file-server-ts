@@ -12,9 +12,9 @@ export default class Server extends events.EventEmitter {
         this.server_created = false;
         this.created_setup = false;
         this.server_listening = false;
-        this.handle_created = false;
         this.router_instance = new Router();
         this.loaded_extensions = [];
+        // @ts-ignore
         let local_path = new URL(import.meta["url"]);
         this.extensions_directory = join(dirname(local_path.pathname), "../extensions");
     }
@@ -71,10 +71,6 @@ export default class Server extends events.EventEmitter {
             return;
         }
         console.log(this.logRoute(response.statusCode, method, path, version, scheme, { time: end_time }));
-    }
-    setHandle(cb) {
-        this.handle_created = true;
-        this.handle = cb;
     }
     async loadExtensionDirectory(path) {
         let directory_contents = await readdirStats(this.extensions_directory);

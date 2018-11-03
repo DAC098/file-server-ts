@@ -20,7 +20,6 @@ async function main() {
         console.error("error loading extensions:", err.stack);
     }
     console.log(server.address());
-    console.log(process.pid);
 }
 main().catch(err => {
     console.log(err);

@@ -1,9 +1,7 @@
 import * as events from 'events';
 import * as http2 from 'http2';
-import * as fs from 'fs';
 import { performance } from 'perf_hooks';
 import { stat, readFile, unlink, writeFile, readdirStats } from '../io/file/file_sys';
-import {exec} from '../exec';
 import { AddressInfo } from 'net';
 import Extension from './Extension';
 import Router from '../Routing/Router';
@@ -42,9 +40,6 @@ export default class Server extends events.EventEmitter {
     private created_setup: boolean;
     private server_listening: boolean;
 
-    private handle: handleCallback;
-    private handle_created: boolean;
-
     public extensions_directory: string;
     private loaded_extensions: Extension[];
 
@@ -56,11 +51,11 @@ export default class Server extends events.EventEmitter {
         this.server_created = false;
         this.created_setup = false;
         this.server_listening = false;
-        this.handle_created = false;
 
         this.router_instance = new Router();
         this.loaded_extensions = [];
 
+        // @ts-ignore
         let local_path = new URL(import.meta["url"]);
         this.extensions_directory = join(dirname(local_path.pathname),"../extensions");
     }
@@ -132,11 +127,6 @@ export default class Server extends events.EventEmitter {
         }
 
         console.log(this.logRoute(response.statusCode,method,path,version,scheme,{time:end_time}));
-    }
-
-    setHandle(cb: handleCallback): void {
-        this.handle_created = true;
-        this.handle = cb;
     }
 
     async loadExtensionDirectory(path: string): Promise<void> {

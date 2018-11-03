@@ -18,7 +18,7 @@ export default class session_handle extends Extension {
             null,
             '/',
             {end: false},
-            (...args) => this.handle_session_request(...args)
+            (request, response) => this.handle_session_request(request, response)
         );
     }
 }

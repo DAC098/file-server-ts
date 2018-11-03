@@ -35,7 +35,7 @@ export default class asset_handle extends Extension {
             route_methods.get,
             '/assets/:path*',
             {},
-           (...args) => this.handle_asset_request(...args)
+           (req, res) => this.handle_asset_request(req, res)
         );
     }
 }
