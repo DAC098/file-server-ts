@@ -1,30 +1,24 @@
-import Route from "./Route";
-export var route_methods;
-(function (route_methods) {
-    route_methods["get"] = "get";
-    route_methods["post"] = "post";
-    route_methods["put"] = "put";
-    route_methods["delete"] = "delete";
-})(route_methods || (route_methods = {}));
-export var route_types;
-(function (route_types) {
-    route_types["endpt"] = "endpt";
-    route_types["mdlwr"] = "mdlwr";
-})(route_types || (route_types = {}));
+import AbstractHandle, { handle_result } from "./AbstractHandle";
+export var route_result;
+(function (route_result) {
+    route_result[route_result["success"] = 1] = "success";
+    route_result[route_result["not_found"] = 2] = "not_found";
+    route_result[route_result["invalid_method"] = 3] = "invalid_method";
+})(route_result || (route_result = {}));
+;
 export default class Router {
     constructor() {
-        this.routes = [];
+        this.handles = [];
     }
-    setCurrentExtension(extension) {
-        this.current_extension = extension;
-    }
-    addMdlwr(method, path, options, ...cb) {
-        let new_route = new Route(this.current_extension, route_types.mdlwr, method, path, options, cb);
-        this.routes.push(new_route);
-    }
-    addRoute(method, path, options, ...cb) {
-        let new_route = new Route(this.current_extension, route_types.endpt, method, path, options, cb);
-        this.routes.push(new_route);
+    addHandle(handle) {
+        if (handle instanceof AbstractHandle) {
+            if (!handle.regexCreated())
+                handle.processRegex();
+            this.handles.push(handle);
+        }
+        else {
+            throw new Error("invalid_handle");
+        }
     }
     async run(request, response) {
         let path = request.url;
@@ -32,58 +26,45 @@ export default class Router {
         let scheme = request.headers[":scheme"] || "encrypted" in request.socket ? "https" : "http";
         let version = request.httpVersion;
         let method = request.method.toLowerCase();
-        let protocol = "";
         let req_url = new URL(path, `${scheme}://${authority}`);
         request["parsed_url"] = req_url;
-        for (let route of this.routes) {
-            let regex_result = route.execPath(req_url.pathname);
-            this.current_route = route;
+        for (let h of this.handles) {
+            let regex_result = h.execPath(req_url.pathname);
+            this.current_handle = h;
             if (regex_result !== null) {
-                request["params"] = Route.getRegexpMapping(regex_result, route.keys);
+                request["params"] = h.getParams(regex_result);
                 let result;
-                let check_method = false;
-                let ran_method = false;
-                if (route.hasMethods()) {
-                    check_method = true;
-                    if (route.checkMethod(method)) {
-                        ran_method = true;
-                        result = await route.run(request, response);
-                    }
-                }
-                else {
-                    result = await route.run(request, response);
-                }
-                switch (route.type) {
-                    case route_types.endpt:
-                        if (typeof result === "boolean") {
-                            if (check_method) {
-                                if (ran_method && !result)
-                                    return true;
-                            }
-                            else {
-                                if (!result)
-                                    return true;
-                            }
-                        }
-                        else {
-                            if (check_method) {
-                                if (ran_method)
-                                    return true;
-                            }
-                            else {
-                                return true;
-                            }
-                        }
+                switch (method) {
+                    case "get":
+                        result = await h.handleGet(request, response);
                         break;
-                    case route_types.mdlwr:
-                        if (typeof result === "boolean") {
-                            if (result)
-                                return true;
-                        }
+                    case "post":
+                        result = await h.handlePost(request, response);
                         break;
+                    case "put":
+                        result = await h.handlePut(request, response);
+                        break;
+                    case "delete":
+                        result = await h.handleDelete(request, response);
+                        break;
+                    case "head":
+                        result = await h.handleHead(request, response);
+                        break;
+                    default:
+                        return route_result.invalid_method;
+                }
+                switch (result) {
+                    case handle_result.handled:
+                        return route_result.success;
+                    case handle_result.unhandled:
+                        return route_result.invalid_method;
+                    case handle_result.continue:
+                        break;
+                    default:
+                        throw new Error("unknown_handle_result");
                 }
             }
         }
-        return false;
+        return route_result.not_found;
     }
 }

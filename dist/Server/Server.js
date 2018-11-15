@@ -1,11 +1,12 @@
 import * as events from 'events';
 import * as http2 from 'http2';
 import { performance } from 'perf_hooks';
-import { stat, readFile, unlink, readdirStats } from '../io/file/file_sys';
+import { stat, readFile, unlink } from '../io/file/file_sys';
 import Extension from './Extension';
-import Router from '../Routing/Router';
-import { dirname, join, basename } from 'path';
+import Router, { route_result } from '../Routing/Router';
+import { dirname, join } from 'path';
 import * as openssl from "../security/openssl";
+;
 export default class Server extends events.EventEmitter {
     constructor() {
         super();
@@ -37,7 +38,7 @@ export default class Server extends events.EventEmitter {
         }
         catch (err) {
             console.error(err);
-            console.error('route durring error', this.router.current_route);
+            console.error('route durring error', this.router.current_handle);
             if (response.headersSent) {
                 console.error(this.logRoute(response.statusCode, method, path, version, scheme, {
                     text: 'error when responding'
@@ -48,7 +49,6 @@ export default class Server extends events.EventEmitter {
                     }
                 }
                 else {
-                    // @ts-ignore
                     response.destroy();
                 }
             }
@@ -57,72 +57,33 @@ export default class Server extends events.EventEmitter {
                     text: 'server error'
                 }));
                 response.writeHead(500, { 'content-type': 'text/plain' });
-                response.end();
+                response.end("server error");
             }
             return;
         }
         let end_time = performance.now() - start_time;
-        if (!router_result) {
-            console.log(this.logRoute(404, method, path, version, scheme, {
-                text: 'not found'
-            }));
-            response.writeHead(404, { 'content-type': 'text/plain' });
-            response.end('not found');
-            return;
+        // console.log("router result:", router_result);
+        if (router_result === route_result.not_found || router_result === route_result.invalid_method) {
+            if (response.headersSent) {
+                console.warn("headers have been sent. cannot send default response");
+            }
+            else {
+                switch (router_result) {
+                    case route_result.not_found:
+                        response.writeHead(404, { 'content-type': 'text/plain' });
+                        response.end("not found");
+                        break;
+                    case route_result.invalid_method:
+                        response.writeHead(405, { "content-type": "text/plain" });
+                        response.end("method not allowed");
+                        break;
+                }
+            }
         }
         console.log(this.logRoute(response.statusCode, method, path, version, scheme, { time: end_time }));
     }
-    async loadExtensionDirectory(path) {
-        let directory_contents = await readdirStats(this.extensions_directory);
-        let load_order = [];
-        let load_order_check = [];
-        // search for load_order file
-        for (let item_stats of directory_contents) {
-            if (basename(item_stats.name, ".js") === "load_order") {
-                let order = await import(join(this.extensions_directory, item_stats.name));
-                load_order_check = order.default;
-            }
-        }
-        // if a load order was specified then push the stats for the item found to the load_order list
-        if (load_order_check.length !== 0) {
-            for (let item of load_order_check) {
-                let found = directory_contents.find(item_stats => {
-                    return item === basename(item_stats.name, ".js");
-                });
-                if (found) {
-                    load_order.push(found);
-                }
-            }
-        }
-        else {
-            // else set what ever was to the load_order
-            load_order = directory_contents;
-        }
-        for (let item_stats of load_order) {
-            if (item_stats.isDirectory()) {
-                await this.loadExtensionDirectory(join(path, item_stats.name));
-            }
-            else {
-                let mod = await import(join(path, item_stats.name));
-                try {
-                    let instance = new mod.default();
-                    if (instance instanceof Extension) {
-                        console.log('loading extension:', instance.getName());
-                        await instance.load(this);
-                        this.loaded_extensions.push(instance);
-                    }
-                    else {
-                        console.warn("the given class did not provide a valid instance. the class must be and instance or extension of the Extension class");
-                    }
-                }
-                catch (err) {
-                    console.error("error loading extension:", err.stack);
-                }
-            }
-        }
-    }
     async loadExtensions() {
-        await this.loadExtensionDirectory(this.extensions_directory);
+        this.loaded_extensions = await Extension.loadDirectory(this, this.extensions_directory);
     }
     async createServerOptions(options) {
         let opts = {};

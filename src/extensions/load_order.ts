@@ -1,6 +1,10 @@
-export default [
-    "socket_handle",
-    "asset_handle",
-    "session_handle",
-    "file_handles"
-];
+import Server from "../Server/Server";
+
+export default function load(server: Server): Array<string> {
+    return [
+        // "socket_handle",
+        "assets",
+        // "session_handle",
+        "file"
+    ];
+};

@@ -1,6 +1,9 @@
-export default [
-    "socket_handle",
-    "asset_handle",
-    "session_handle",
-    "file_handles"
-];
+export default function load(server) {
+    return [
+        // "socket_handle",
+        "assets",
+        // "session_handle",
+        "file"
+    ];
+}
+;

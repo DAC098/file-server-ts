@@ -1,17 +1,24 @@
 import * as events from 'events';
 import * as http2 from 'http2';
 import { performance } from 'perf_hooks';
-import { stat, readFile, unlink, writeFile, readdirStats } from '../io/file/file_sys';
+import { stat, readFile, unlink } from '../io/file/file_sys';
 import { AddressInfo } from 'net';
 import Extension from './Extension';
-import Router from '../Routing/Router';
-import { dirname, join, basename } from 'path';
+import Router, { route_result } from '../Routing/Router';
+import { dirname, join } from 'path';
 import * as openssl from "../security/openssl";
+import { ServerResponse, ServerRequest } from 'http';
 
 interface log_data {
     text?: string,
     time?: number
 }
+
+export interface server_request extends http2.Http2ServerRequest, ReadableStream {
+    parsed_url: URL,
+    params: {[s: string]: string | null}
+};
+export type server_response = http2.Http2ServerResponse & WritableStream;
 
 export interface server_options {
     host: string,
@@ -24,10 +31,6 @@ export interface server_options {
         key_path?: string,
         cert_path?: string
     }
-}
-
-export interface handleCallback {
-    (request: http2.Http2ServerRequest, response: http2.Http2ServerResponse): Promise<void>
 }
 
 export default class Server extends events.EventEmitter {
@@ -60,17 +63,17 @@ export default class Server extends events.EventEmitter {
         this.extensions_directory = join(dirname(local_path.pathname),"../extensions");
     }
 
-    get router() {
+    public get router() {
         return this.router_instance;
     }
 
-    logRoute(code: number,method: string, url: string,version: string,scheme: string,data: log_data = {}): string {
+    public logRoute(code: number,method: string, url: string,version: string,scheme: string,data: log_data = {}): string {
         return `${typeof data['text'] === 'string' && data['text'].length !== 0 ? data['text'] + ': ' : ''}${method} ${code} ${url} HTTP/${version}${scheme === 'https' ? ' SSL' : ''}${typeof data['time'] === 'number' ? ' ' + data['time'].toPrecision(3) + ' ms' : ''}`;
     }
 
-    async handleRequest(
-        request: http2.Http2ServerRequest,
-        response: http2.Http2ServerResponse
+    private async handleRequest(
+        request: server_request,
+        response: server_response
     ): Promise<void> {
         let path = request.url;
         let authority = request.headers[':authority'] || request.headers['host'];
@@ -80,13 +83,13 @@ export default class Server extends events.EventEmitter {
 
         let start_time = performance.now();
 
-        let router_result: boolean;
+        let router_result: route_result;
 
         try {
-            router_result = await this.router.run(request,response);
+            router_result = await this.router.run(request, response);
         } catch(err) {
             console.error(err);
-            console.error('route durring error',this.router.current_route);
+            console.error('route durring error', this.router.current_handle);
 
             if(response.headersSent) {
                 console.error(this.logRoute(response.statusCode,method,path,version,scheme,{
@@ -98,7 +101,6 @@ export default class Server extends events.EventEmitter {
                         response.stream.close(http2.constants.NGHTTP2_INTERNAL_ERROR);
                     }
                 } else {
-                    // @ts-ignore
                     response.destroy();
                 }
             } else {
@@ -107,7 +109,7 @@ export default class Server extends events.EventEmitter {
                 }));
 
                 response.writeHead(500,{'content-type':'text/plain'});
-                response.end();
+                response.end("server error");
             }
 
             return;
@@ -115,80 +117,33 @@ export default class Server extends events.EventEmitter {
 
         let end_time = performance.now() - start_time;
 
-        if(!router_result) {
-            console.log(this.logRoute(404,method,path,version,scheme,{
-                text:'not found'
-            }));
+        // console.log("router result:", router_result);
 
-            response.writeHead(404,{'content-type':'text/plain'});
-            response.end('not found');
-
-            return;
+        if (router_result === route_result.not_found || router_result === route_result.invalid_method) {
+            if (response.headersSent) {
+                console.warn("headers have been sent. cannot send default response");
+            } else {
+                switch (router_result) {
+                    case route_result.not_found:
+                        response.writeHead(404, {'content-type':'text/plain'});
+                        response.end("not found");
+                        break;
+                    case route_result.invalid_method:
+                        response.writeHead(405, {"content-type": "text/plain"});
+                        response.end("method not allowed");
+                        break;
+                }
+            }
         }
 
         console.log(this.logRoute(response.statusCode,method,path,version,scheme,{time:end_time}));
     }
 
-    async loadExtensionDirectory(path: string): Promise<void> {
-        let directory_contents = await readdirStats(this.extensions_directory);
-        let load_order = [];
-        let load_order_check = [];
-
-        // search for load_order file
-        for (let item_stats of directory_contents) {
-            if(basename(item_stats.name,".js") === "load_order") {
-                let order = await import(join(this.extensions_directory,item_stats.name));
-
-                load_order_check = order.default;
-            }
-        }
-
-        // if a load order was specified then push the stats for the item found to the load_order list
-        if (load_order_check.length !== 0) {
-            for (let item of load_order_check) {
-                let found = directory_contents.find(item_stats => {
-                    return item === basename(item_stats.name, ".js");
-                });
-
-                if (found) {
-                    load_order.push(found);
-                }
-            }
-        } else {
-            // else set what ever was to the load_order
-            load_order = directory_contents;
-        }
-
-        for (let item_stats of load_order) {
-            if (item_stats.isDirectory()) {
-                await this.loadExtensionDirectory(join(path,item_stats.name));
-            } else {
-                let mod = await import(join(path,item_stats.name));
-
-                try {
-                    let instance: Extension = new mod.default();
-
-                    if(instance instanceof Extension) {
-                        console.log('loading extension:', instance.getName());
-                        
-                        await instance.load(this);
-
-                        this.loaded_extensions.push(instance);
-                    } else {
-                        console.warn("the given class did not provide a valid instance. the class must be and instance or extension of the Extension class");
-                    }
-                } catch(err) {
-                    console.error("error loading extension:",err.stack);
-                }
-            }
-        }
+    public async loadExtensions(): Promise<void> {
+        this.loaded_extensions = await Extension.loadDirectory(this, this.extensions_directory);
     }
 
-    async loadExtensions(): Promise<void> {
-        await this.loadExtensionDirectory(this.extensions_directory);
-    }
-
-    async createServerOptions(options: server_options): Promise<void> {
+    public async createServerOptions(options: server_options): Promise<void> {
         let opts: http2.SecureServerOptions = {};
 
         if(typeof options !== 'object') {
@@ -308,7 +263,10 @@ export default class Server extends events.EventEmitter {
         
         this.instance = http2.createSecureServer(
             this.server_setup,
-            (request,response) => this.handleRequest(request,response)
+            (request,response) => this.handleRequest(
+                <server_request>request,
+                <server_response>response
+                )
         );
 
         this.server_created = true;

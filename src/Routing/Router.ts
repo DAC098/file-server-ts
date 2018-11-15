@@ -1,153 +1,89 @@
-import { RegExpOptions } from "path-to-regexp";
 import { Http2ServerRequest, Http2ServerResponse } from "http2";
-import Route from "./Route";
-
-export enum route_methods {
-    get = "get",
-    post = "post",
-    put = "put",
-    delete = "delete"
-}
-
-export enum route_types {
-    endpt = "endpt",
-    mdlwr = "mdlwr"
-}
+import { ServerResponse } from "http";
+import AbstractHandle, { handle_result } from "./AbstractHandle";
+import { server_request, server_response } from "../Server/Server";
 
 export type route_params = {
     [s: string]: string | null
 }
 
-export interface route_request extends Http2ServerRequest, ReadableStream {
-    params: route_params,
-    parsed_url: URL
-}
-
-export interface route_cb {
-    (request: route_request, response: Http2ServerResponse): Promise<void | boolean>
-}
-
-export interface route_run_result {
-    found: boolean,
-    valid_method: boolean
-}
-
-export type route_method_like = route_methods | route_methods[] | null | undefined
+export enum route_result {
+    success = 1,
+    not_found = 2,
+    invalid_method = 3
+};
 
 export default class Router {
-    private routes: Route[];
-    private current_extension: string;
+    private handles: AbstractHandle[] = [];
 
-    public current_route: Route;
+    public current_handle: AbstractHandle;
 
-    constructor() {
-        this.routes = [];
+    constructor() {}
+
+    addHandle(handle: AbstractHandle): void {
+        if (handle instanceof AbstractHandle) {
+            if (!handle.regexCreated())
+                handle.processRegex();
+
+            this.handles.push(handle);
+        } else {
+            throw new Error("invalid_handle");
+        }
     }
 
-    setCurrentExtension(extension: string): void {
-        this.current_extension = extension;
-    }
-
-    addMdlwr(
-        method: route_method_like,
-        path: string,
-        options: RegExpOptions,
-        ...cb: route_cb[]
-    ): void {
-        let new_route = new Route(
-            this.current_extension,
-            route_types.mdlwr,
-            method,
-            path,
-            options,
-            cb
-        );
-
-        this.routes.push(new_route);
-    }
-    
-    addRoute(
-        method: route_method_like, 
-        path: string, 
-        options: RegExpOptions, 
-        ...cb: route_cb[]
-    ): void {
-        let new_route = new Route(
-            this.current_extension,
-            route_types.endpt,
-            method,
-            path,
-            options,
-            cb
-        );
-
-        this.routes.push(new_route);
-    }
-
-    async run(request: Http2ServerRequest, response: Http2ServerResponse): Promise<boolean>;
-    async run(request: Http2ServerRequest & route_request, response: Http2ServerResponse): Promise<boolean> {
+    public async run(request: server_request, response: server_response): Promise<route_result> {
         let path = request.url;
         let authority = request.headers[":authority"] || request.headers["host"];
         let scheme = request.headers[":scheme"] || "encrypted" in request.socket ? "https" : "http";
         let version = request.httpVersion;
-        let method = <route_methods>request.method.toLowerCase();
-        let protocol = "";
+        let method = request.method.toLowerCase();
 
         let req_url = new URL(path,`${scheme}://${authority}`);
 
         request["parsed_url"] = req_url;
 
-        for(let route of this.routes) {
-            let regex_result = route.execPath(req_url.pathname);
+        for(let h of this.handles) {
+            let regex_result = h.execPath(req_url.pathname);
 
-            this.current_route = route;
+            this.current_handle = h;
             
             if(regex_result !== null) {
-                request["params"] = Route.getRegexpMapping(regex_result,route.keys);
+                request["params"] = h.getParams(regex_result);
                 let result;
-                let check_method = false;
-                let ran_method = false;
 
-                if(route.hasMethods()) {
-                    check_method = true;
-                    
-                    if(route.checkMethod(method)) {
-                        ran_method = true;
-                        result = await route.run(request,response);
-                    }
-                } else {
-                    result = await route.run(request,response);
+                switch(method) {
+                    case "get":
+                        result = await h.handleGet(request, response);
+                        break;
+                    case "post":
+                        result = await h.handlePost(request, response);
+                        break;
+                    case "put":
+                        result = await h.handlePut(request, response);
+                        break;
+                    case "delete":
+                        result = await h.handleDelete(request, response);
+                        break;
+                    case "head":
+                        result = await h.handleHead(request, response);
+                        break;
+                    default:
+                        return route_result.invalid_method;
                 }
 
-                switch(route.type) {
-                    case route_types.endpt:
-                        if(typeof result === "boolean") {
-                            if(check_method) {
-                                if(ran_method && !result)
-                                    return true;
-                            } else {
-                                if(!result)
-                                    return true;
-                            }
-                        } else {
-                            if(check_method) {
-                                if(ran_method)
-                                    return true;
-                            } else {
-                                return true;
-                            }
-                        }
+                switch(result) {
+                    case handle_result.handled:
+                        return route_result.success;
+                    case handle_result.unhandled:
+                        return route_result.invalid_method;
+                    case handle_result.continue:
                         break;
-                    case route_types.mdlwr:
-                        if(typeof result === "boolean") {
-                            if(result)
-                                return true;
-                        }
-                    break;
+                    default:
+                        throw new Error("unknown_handle_result");
                 }
             }
         }
 
-        return false;
+        return route_result.not_found;
     }
 }

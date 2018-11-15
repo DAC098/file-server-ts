@@ -1,14 +1,16 @@
-import Extension from "../Server/Extension";
+import Handle from "../../Routing/Handle";
+import { handle_result } from "../../Routing/AbstractHandle";
 import { createReadStream } from "fs";
-import { exists } from "../io/file/file_sys";
-import pp from '../pp';
-import { route_methods } from "../Routing/Router";
+import { exists } from "../../io/file/file_sys";
+import pp from '../../pp';
 import { join } from "path";
-export default class asset_handle extends Extension {
-    getName() {
-        return "asset_handle";
+export default class handle_asset extends Handle {
+    constructor() {
+        super(...arguments);
+        this.path = "/assets/*";
+        this.path_options = {};
     }
-    async handle_asset_request(request, response) {
+    async handleGet(request, response) {
         let check_path = join(process.cwd(), '/assets/' + request.params['path']);
         if (await exists(check_path)) {
             let read_stream = createReadStream(check_path);
@@ -20,8 +22,6 @@ export default class asset_handle extends Extension {
             response.writeHead(404, { 'content-type': 'text/plain' });
             response.end('not found');
         }
-    }
-    async load(server) {
-        server.router.addRoute(route_methods.get, '/assets/:path*', {}, (req, res) => this.handle_asset_request(req, res));
+        return handle_result.handled;
     }
 }
