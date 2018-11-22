@@ -5,6 +5,8 @@ import { basename, join } from "path";
 export default abstract class Extension {
 
     protected server: Server;
+
+    public abstract requires: string[];
     
     static async loadDirectory(server: Server, path: string): Promise<Array<Extension>> {
         let directory_contents = await readdirStats(path);
@@ -64,8 +66,8 @@ export default abstract class Extension {
         this.server = server;
     }
 
-    abstract getName(): string;
+    public abstract getName(): string;
 
-    abstract async load(): Promise<void>;
+    public abstract async load(): Promise<void>;
 
 }

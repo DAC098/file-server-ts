@@ -3,7 +3,7 @@ version: "3"
 
 services:
   server:
-    image: "node:10.10.0"
+    image: "node:11.1.0"
     volumes:
       - "./:/app"
     working_dir: "/app"
@@ -12,5 +12,11 @@ services:
     ports:
       - "8443:443"
     command: "node --experimental-modules --loader ./loader.mjs ./dist/main.js"
+  psql:
+    build: ./postgres/
+    environment:
+      POSTGRES_PASSWORD: "password"
+    expose:
+      - "5432"
 
 ...

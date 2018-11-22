@@ -16,7 +16,7 @@ export default class handle_asset extends Handle {
         if(await exists(check_path)) {
             let read_stream = createReadStream(check_path);
 
-            await pp(read_stream,response);
+            await pp(read_stream, response);
 
             read_stream.close();
             response.end();

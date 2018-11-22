@@ -7,18 +7,22 @@ import Extension from './Extension';
 import Router, { route_result } from '../Routing/Router';
 import { dirname, join } from 'path';
 import * as openssl from "../security/openssl";
-import { ServerResponse, ServerRequest } from 'http';
+import SQLPool from "../psql/SQLPool";
+import { Readable, Writable } from 'stream';
+// import { ServerResponse, ServerRequest } from 'http';
 
 interface log_data {
     text?: string,
     time?: number
 }
-
-export interface server_request extends http2.Http2ServerRequest, ReadableStream {
+// @ts-ignore
+export interface server_request extends http2.Http2ServerRequest, Readable {
     parsed_url: URL,
-    params: {[s: string]: string | null}
+    params: {[s: string]: string | null},
+    db: SQLPool,
+    user: object
 };
-export type server_response = http2.Http2ServerResponse & WritableStream;
+export type server_response = http2.Http2ServerResponse & Writable;
 
 export interface server_options {
     host: string,
@@ -141,6 +145,10 @@ export default class Server extends events.EventEmitter {
 
     public async loadExtensions(): Promise<void> {
         this.loaded_extensions = await Extension.loadDirectory(this, this.extensions_directory);
+    }
+
+    public async loadCoreHandless(): Promise<void> {
+
     }
 
     public async createServerOptions(options: server_options): Promise<void> {
